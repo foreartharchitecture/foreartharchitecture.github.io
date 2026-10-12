@@ -1,0 +1,13 @@
+# Local development only (copy to .dev.vars). Points the Worker at dev/mock.mjs.
+SESSION_SECRET=dev-session-secret-0123456789abcdef-local
+FOUNDER_EMAILS=arjun@example.com, nisha@example.com
+MAIL_URL=http://127.0.0.1:8790/mail
+MAIL_KEY=dev-mail-key
+NOTION_TOKEN=dev-notion-token
+# Generate a throwaway key: openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048
+GOOGLE_SA_KEY={"client_email":"dev@example.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"}
+ANTHROPIC_API_KEY=dev-anthropic-key
+DEV_NOTION_API=http://127.0.0.1:8790/notion/v1
+DEV_DRIVE_API=http://127.0.0.1:8790/drive/v3
+DEV_GOOGLE_TOKEN=http://127.0.0.1:8790/google/token
+DEV_ANTHROPIC_API=http://127.0.0.1:8790/anthropic/v1/messages

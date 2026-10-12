@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in · Forearth Studio</title>
+<meta name="description" content="Forearth Architecture studio dashboard">
+<meta name="theme-color" content="#101311">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Forearth">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#101311; --sheet:#161a17; --sheet-2:#1c211d; --rule:#2a302b; --rule-2:#3b433d; --grid:rgba(232,229,218,.035);
+  --ink:#ebe8dd; --ink-2:#aeb1a6; --ink-3:#7f847a; --inv-bg:#ebe8dd; --inv-fg:#101311;
+  --accent:#d95926; --good:#62cf6c; --crit:#ff8f86;
+  --f-display:"Archivo","Arial Narrow","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --ground:#ecebe4; --sheet:#fbfaf5; --sheet-2:#f4f3ec; --rule:#d8d6cb; --rule-2:#c3c1b5; --grid:rgba(24,25,22,.05);
+  --ink:#181915; --ink-2:#52544c; --ink-3:#787a71; --inv-bg:#181915; --inv-fg:#fbfaf5; --accent:#c4501f; --good:#0b7a0b; --crit:#b42323;
+  color-scheme:light;
+}}
+:root[data-theme="dark"]{ --ground:#101311; --sheet:#161a17; --sheet-2:#1c211d; --rule:#2a302b; --rule-2:#3b433d; --ink:#ebe8dd; --ink-2:#aeb1a6; --ink-3:#7f847a; --inv-bg:#ebe8dd; --inv-fg:#101311; color-scheme:dark; }
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background-color:var(--ground); color:var(--ink);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px; font:400 15px/1.5 var(--f-body); -webkit-font-smoothing:antialiased;
+  display:grid; place-items:center; padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));
+  min-height:100vh; min-height:100dvh;
+}
+button,input{font:inherit;color:inherit}
+.sheet{width:100%;max-width:420px;background:var(--sheet);border:1px solid var(--rule-2);border-radius:4px;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.tb{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid var(--rule-2)}
+.tb>div{padding:14px 18px}
+.tb>div+div{border-left:1px solid var(--rule-2);text-align:right}
+.mark{display:flex;align-items:center;gap:12px}
+.mark img{width:32px;height:32px;flex:none;display:block;object-fit:contain}
+.wm{font-family:var(--f-display);font-stretch:118%;font-weight:700;letter-spacing:.2em;font-size:17px;line-height:1}
+.wm-sub{display:block;font-family:var(--f-display);font-stretch:112%;font-weight:600;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-top:5px}
+.lbl{font-family:var(--f-display);font-stretch:112%;font-weight:600;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);display:block}
+.val{font-family:var(--f-mono);font-size:12px;color:var(--ink-2);display:block;margin-top:3px}
+.body{padding:22px 18px 20px}
+h1{font-family:var(--f-display);font-stretch:108%;font-weight:650;font-size:22px;line-height:1.2;margin:0 0 6px;letter-spacing:.01em}
+p.lead{margin:0 0 18px;color:var(--ink-2);font-size:14px}
+form{display:grid;gap:14px}
+.f{display:grid;gap:6px}
+.f label{font-size:13px;font-weight:500;color:var(--ink-2)}
+.f input[type=text],.f input[type=email],.f input[type=password],.f input[inputmode]{
+  width:100%;height:44px;padding:0 12px;background:var(--sheet-2);border:1px solid var(--rule-2);border-radius:4px;outline:none;font-size:16px
+}
+.f input:focus{border-color:var(--ink-2);box-shadow:0 0 0 3px color-mix(in oklab,var(--ink) 14%,transparent)}
+.code{font-family:var(--f-mono)!important;letter-spacing:.5em;text-align:center;font-size:22px!important;height:54px!important;padding-left:.5em!important}
+.pw{position:relative}
+.pw input{padding-right:64px}
+.pw button{position:absolute;right:6px;top:6px;height:32px;padding:0 10px;border:0;background:transparent;color:var(--ink-3);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:3px}
+.pw button:hover{color:var(--ink)}
+.chk{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);cursor:pointer}
+.chk input{width:18px;height:18px;accent-color:var(--ink)}
+.btn{height:46px;border-radius:4px;border:1px solid var(--inv-bg);background:var(--inv-bg);color:var(--inv-fg);font-weight:600;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:10px}
+.btn[disabled]{opacity:.6;cursor:progress}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--rule-2);height:40px;font-size:14px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.links{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--rule)}
+a,.link{color:var(--ink-2);font-size:13.5px;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--rule-2);background:none;border:0;padding:0;cursor:pointer}
+a:hover,.link:hover{color:var(--ink)}
+.link[disabled]{opacity:.5;cursor:default;text-decoration:none}
+.msg{font-size:13.5px;padding:10px 12px;border-radius:4px;border:1px solid var(--rule-2);background:var(--sheet-2)}
+.msg.bad{border-color:color-mix(in oklab,var(--crit) 55%,var(--rule-2));color:var(--crit)}
+.msg.good{border-color:color-mix(in oklab,var(--good) 55%,var(--rule-2));color:var(--good)}
+.hint{font-size:12.5px;color:var(--ink-3)}
+.steps{display:flex;gap:6px;margin:0 0 16px}
+.steps i{height:3px;flex:1;background:var(--rule-2);border-radius:2px}
+.steps i.on{background:var(--ink)}
+.spin{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.foot{margin-top:14px;text-align:center;font-size:12px;color:var(--ink-3);font-family:var(--f-mono)}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<main class="sheet" aria-labelledby="h">
+  <div class="tb">
+    <div class="mark">
+      <picture><source srcset="/icons/mark-dark.png" media="(prefers-color-scheme: light)"><img src="/icons/mark-light.png" alt="" width="32" height="32"></picture>
+      <div><span class="wm">FOREARTH</span><span class="wm-sub">Studio dashboard</span></div>
+    </div>
+    <div><span class="lbl">Sheet</span><span class="val" id="sheet">A-00</span></div>
+  </div>
+  <div class="body">
+    <div class="steps" id="steps" aria-hidden="true"></div>
+    <h1 id="h">Sign in</h1>
+    <p class="lead" id="lead">Use your Forearth Studio username and password.</p>
+    <div class="msg" id="msg" role="status" hidden></div>
+    <div id="view"></div>
+  </div>
+</main>
+<script src="/login.js" defer></script>
+</body>
+</html>
