@@ -194,8 +194,8 @@ function openPassword() {
 
 // ---------- access management (founders) ----------
 const EV = { login: 'Signed in', login_failed: 'Failed sign-in', logout: 'Signed out', password_reset: 'Reset password', password_changed: 'Changed password',
-  account_created: 'Created account', invited: 'Sent invitation', access_changed: 'Changed access', signed_out: 'Signed someone out', removed: 'Removed account' };
-let tab = 'people', data = null;
+  account_created: 'Created account', invited: 'Sent invitation', access_changed: 'Changed access', signed_out: 'Signed someone out', removed: 'Removed account', reset_link: 'Made a password reset link', setup_failed: 'Wrong setup code' };
+let tab = 'people', data = null, shared = null;
 async function openAccess() {
   openModal('Access', `<div class="ap-tabs" role="tablist">${[['people', 'People'], ['activity', 'Activity'], ['system', 'System status']].map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${l}</button>`).join('')}</div><div class="ap-b" id="apb"><div class="hint">Loading…</div></div>`);
   modal.addEventListener('click', e => { const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; modal.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b === t))); paint(); } });
@@ -227,11 +227,15 @@ function paintPeople(box) {
     const sub = u.status === 'invited' ? `Invitation ${u.inviteExpires ? 'expires ' + when(u.inviteExpires) : 'expired'}` : `${u.username || ''} · ${u.email} · last sign-in ${when(u.last_login)}`;
     const acts = me ? '<span class="hint">You</span>'
       : u.status === 'invited' ? `<button class="btn" data-u="resend" data-id="${u.id}">Resend invite</button><button class="btn ghost" data-u="remove" data-id="${u.id}">Cancel</button>`
-      : `${u.status === 'active' ? `<button class="btn" data-u="signout" data-id="${u.id}" title="Sign this person out everywhere">Sign out</button><button class="btn" data-u="disable" data-id="${u.id}">Disable</button>` : `<button class="btn" data-u="enable" data-id="${u.id}">Enable</button><button class="btn ghost" data-u="remove" data-id="${u.id}">Remove</button>`}`;
+      : `${u.status === 'active' ? `<button class="btn" data-u="reset" data-id="${u.id}" title="Make a link to choose a new password">Reset password</button><button class="btn" data-u="signout" data-id="${u.id}" title="Sign this person out everywhere">Sign out</button><button class="btn" data-u="disable" data-id="${u.id}">Disable</button>` : `<button class="btn" data-u="enable" data-id="${u.id}">Enable</button><button class="btn ghost" data-u="remove" data-id="${u.id}">Remove</button>`}`;
     return `<div class="urow"><span class="av">${esc(initials(u.name || u.email))}</span><div><b>${esc(u.name || u.email)}${state}</b><small>${esc(sub)}</small></div>
       <select data-role="${u.id}" aria-label="Access level for ${esc(u.name || u.email)}"${me ? ' disabled' : ''}>${opts(u.role)}</select><div class="uacts">${acts}</div></div>`;
   }).join('');
-  box.innerHTML = `<form class="ap-card" id="invf" novalidate><h3>Invite someone</h3><div class="ap-inv">
+  const linkBox = shared ? `<div class="ap-card"><h3>${esc(shared.title)}</h3><div style="padding:12px;display:grid;gap:8px">
+      <p class="hint" style="margin:0">${esc(shared.text)}</p>
+      <div style="display:flex;gap:8px"><input id="share-link" readonly value="${esc(shared.link)}" style="flex:1;min-width:0;height:34px;border:1px solid var(--rule-2);background:var(--sheet);border-radius:4px;padding:0 9px;font-family:var(--f-mono);font-size:12px">
+      <button class="btn primary" type="button" id="share-copy">Copy link</button><button class="btn ghost" type="button" id="share-close">Hide</button></div></div></div>` : '';
+  box.innerHTML = linkBox + `<form class="ap-card" id="invf" novalidate><h3>Invite someone</h3><div class="ap-inv">
       <div class="ap-f"><label for="inv-n">Name</label><input id="inv-n" autocomplete="off" required></div>
       <div class="ap-f"><label for="inv-e">Email</label><input id="inv-e" type="email" autocomplete="off" required></div>
       <div class="ap-f"><label for="inv-r">Access</label><select id="inv-r">${opts('staff')}</select></div>
@@ -244,7 +248,7 @@ function paintPeople(box) {
     const email = $('#inv-e', box).value.trim(), name = $('#inv-n', box).value.trim(), role = $('#inv-r', box).value;
     if (!name || !email) return note('Enter a name and email.', true);
     b.disabled = true; b.textContent = 'Sending…';
-    try { await api('/admin/invite', { email, name, role }); note(`Invitation sent to ${email}.`); await load(); paint(); }
+    try { const r = await api('/admin/invite', { email, name, role }); share(r, `Invitation link for ${name}`, name); await load(); paint(); }
     catch (err) { note(err.message, true); b.disabled = false; b.textContent = 'Send invitation'; }
   });
   box.querySelectorAll('select[data-role]').forEach(s => s.addEventListener('change', async () => {
@@ -261,7 +265,8 @@ function paintPeople(box) {
     if (ask && !confirmBox(ask[0], ask[1])) return;
     b.disabled = true;
     try {
-      if (a === 'resend') await api('/admin/invite', { email: u.email, name: u.name, role: u.role });
+      if (a === 'resend') { share(await api('/admin/invite', { email: u.email, name: u.name, role: u.role }), `Invitation link for ${who}`, who); await load(); paint(); return; }
+      if (a === 'reset') { share(await api('/admin/reset-link', { id: u.id }), `Password reset link for ${who}`, who); paint(); return; }
       else if (a === 'remove') await api('/admin/remove', { id: u.id });
       else if (a === 'signout') await api('/admin/signout', { id: u.id });
       else await api('/admin/update', { id: u.id, status: a === 'disable' ? 'disabled' : 'active' });
@@ -270,6 +275,17 @@ function paintPeople(box) {
     } catch (err) { note(err.message, true); b.disabled = false; }
   }));
 }
+
+function share(r, title, who) {
+  shared = { title, link: r.link, text: (r.emailed ? `Also emailed to ${who}. ` : '') + `Send this link to ${who} on WhatsApp or email. It works once and expires in ${r.expiresDays} days.` };
+  note(r.emailed ? `Emailed to ${who}. The link is also shown in Manage access.` : 'Link ready. Copy it and send it to them.');
+}
+document.addEventListener('click', e => {
+  if (e.target.id === 'share-copy') {
+    const i = document.getElementById('share-link'); i.select();
+    (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).then(() => note('Link copied.')).catch(() => { document.execCommand && document.execCommand('copy'); note('Link copied.'); });
+  } else if (e.target.id === 'share-close') { shared = null; paint(); }
+});
 
 // ---------- offer installation once on phones ----------
 setTimeout(() => {

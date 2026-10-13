@@ -4,7 +4,7 @@
 // (210,000 rounds, per-user salt) and the server stores a salted SHA-256 of that key.
 import { HttpError, json, body, str, lower, isEmail, maskEmail, clientIp, randomId, randomDigits, hmac, sha256, safeEqual,
   signToken, readToken, parseCookies, cookie } from './util.js';
-import { sendMail, codeEmail, inviteEmail } from './mail.js';
+import { sendMail, codeEmail, inviteEmail, resetLinkEmail } from './mail.js';
 import { ROLES, roleOf } from './config.js';
 
 const MIN = 60000, HOUR = 3600000, DAY = 86400000;
@@ -16,6 +16,8 @@ const secret = env => {
   if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 24) throw new HttpError(503, 'not_configured', 'SESSION_SECRET is missing. Add it in the Cloudflare settings.');
   return env.SESSION_SECRET;
 };
+// Emailed codes are used only once the Gmail relay is connected; until then sign-in is username + password.
+export const mailOn = env => !!(env.MAIL_URL && env.MAIL_KEY);
 const founderEmails = env => String(env.FOUNDER_EMAILS || '').split(/[,;\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
 const passKeyOk = k => typeof k === 'string' && /^[A-Za-z0-9_-]{40,64}$/.test(k);
 const saltOk = s => typeof s === 'string' && /^[A-Za-z0-9_-]{16,44}$/.test(s);
@@ -59,7 +61,7 @@ export function publicUser(u) {
   return {
     user: { id: u.id, username: u.username, name: u.name || u.username, email: u.email, role: u.role, roleLabel: r.label },
     perms: { write: r.write, search: r.search, ai: r.ai, admin: r.admin, drive: r.drive, views: r.views },
-    groups: r.groups, home: r.home
+    groups: r.groups, pages: r.pages || null, home: r.home
   };
 }
 
@@ -129,11 +131,12 @@ export async function handleAuth(req, env, path) {
     if (!s) throw new HttpError(401, 'unauthorized', 'Sign in to continue.');
     return json(Object.assign(publicUser(s.user), { clientSalt: s.user.client_salt, aiEnabled: !!env.ANTHROPIC_API_KEY }));
   }
+  if (req.method === 'GET' && path === '/auth/config') return json({ mail: mailOn(env), setup: !!env.SETUP_CODE });
   if (req.method === 'GET' && path === '/auth/invite-info') {
     const token = new URL(req.url).searchParams.get('token') || '';
     const t = token && await store(env).peekToken(await sha256(token), 'invite');
     if (!t) throw new HttpError(404, 'invalid_link', 'This link has expired or was already used. Ask a founder for a new invitation.');
-    return json({ email: t.email, name: t.data.name || '', role: t.data.role, roleLabel: roleOf(t.data.role).label, salt: t.data.salt });
+    return json({ email: t.email, name: t.data.name || '', role: t.data.role, roleLabel: roleOf(t.data.role).label, salt: t.data.salt, reset: !!t.data.reset, username: t.data.username || '' });
   }
   if (req.method !== 'POST') throw new HttpError(405, 'method', 'Method not allowed.');
   const b = await body(req);
@@ -160,8 +163,8 @@ export async function handleAuth(req, env, path) {
       }
       const ok = u && u.status === 'active' && u.pass_hash && safeEqual(await hashPass(u.server_salt, b.passKey), u.pass_hash);
       if (!ok) { if (u) await log(env, req, 'login_failed', u, 'wrong password'); throw new HttpError(401, 'bad_login', 'Username or password is incorrect.'); }
-      if (trusted) {
-        await store(env).patchUser(u.id, { last_login: Date.now() }); await log(env, req, 'login', u, 'trusted device');
+      if (trusted || !mailOn(env)) {
+        await store(env).patchUser(u.id, { last_login: Date.now() }); await log(env, req, 'login', u, trusted ? 'trusted device' : 'password');
         return signedIn({ done: true }, [await sessionCookie(env, u)]);
       }
       const challenge = await issueCode(env, { purpose: 'login', user: u, email: u.email });
@@ -198,6 +201,7 @@ export async function handleAuth(req, env, path) {
       await limit(env, 'forgot:' + ip, HOUR, 10);
       const login = lower(b.login);
       if (!login) throw new HttpError(400, 'bad_request', 'Enter your username or email.');
+      if (!mailOn(env)) throw new HttpError(503, 'mail_off', 'Email reset is not switched on yet. Ask a founder to send you a password reset link from Manage access.');
       const salt = randomId(16);
       const u = await store(env).getUser({ login });
       if (!u || u.status !== 'active') return json({ ok: true, challenge: randomId(18), salt });
@@ -221,6 +225,17 @@ export async function handleAuth(req, env, path) {
       if (!founderEmails(env).includes(email)) throw new HttpError(403, 'not_founder', 'This email is not on the founders list. Ask a founder to invite you instead.');
       await limit(env, 'claim:' + email, HOUR, 5);
       const u = await store(env).getUser({ email });
+      if (!mailOn(env)) {
+        // Without email, founders prove themselves with the SETUP_CODE kept in Cloudflare. It also recovers a founder account.
+        if (!env.SETUP_CODE || env.SETUP_CODE.length < 12) throw new HttpError(503, 'not_configured', 'Founder setup needs SETUP_CODE in the Cloudflare settings.');
+        if (!safeEqual(str(b.setupCode, 200), env.SETUP_CODE)) { await log(env, req, 'setup_failed', u, email); throw new HttpError(401, 'bad_setup_code', 'That setup code is not right.'); }
+        const recover = !!(u && u.status === 'active' && u.role === 'founder');
+        if (!recover) claimable(u);
+        const token = randomId(32);
+        await store(env).putToken({ hash: await sha256(token), purpose: 'invite', user_id: u ? u.id : null, email,
+          data: { role: 'founder', name: u ? u.name : '', salt: randomId(16), reset: recover, username: recover ? u.username : '' }, expires: Date.now() + 30 * MIN });
+        return json({ ok: true, token });
+      }
       claimable(u);
       const challenge = await issueCode(env, { purpose: 'claim', email });
       return json({ ok: true, challenge, hint: maskEmail(email) });
@@ -245,7 +260,8 @@ export async function handleAuth(req, env, path) {
       if (!t) throw new HttpError(404, 'invalid_link', 'This link has expired or was already used. Ask a founder for a new invitation.');
       const existing = await store(env).getUser({ email: t.email });
       // Links only finish setting up a new or invited account; they never revive a disabled, removed or active one.
-      if (existing && (existing.status !== 'invited' || (t.user_id && t.user_id !== existing.id))) throw new HttpError(409, 'invalid_link', 'This link can no longer be used. Ask a founder for a new invitation.');
+      const resettable = !!(t.data.reset && existing && existing.status === 'active');
+      if (existing && ((existing.status !== 'invited' && !resettable) || (t.user_id && t.user_id !== existing.id))) throw new HttpError(409, 'invalid_link', 'This link can no longer be used. Ask a founder for a new invitation.');
       if (t.user_id && !existing) throw new HttpError(409, 'invalid_link', 'This invitation was cancelled. Ask a founder for a new one.');
       if (await store(env).usernameTaken(username, existing && existing.id)) throw new HttpError(409, 'taken', 'That username is taken. Try another.');
       if (!await store(env).takeToken(hash, 'invite')) throw new HttpError(404, 'invalid_link', 'This link was already used.');
@@ -262,7 +278,7 @@ export async function handleAuth(req, env, path) {
       }
       forgetUser(uid);
       const u = await loadUser(env, uid, true);
-      await log(env, req, 'account_created', u, roleOf(u.role).label);
+      await log(env, req, resettable ? 'password_reset' : 'account_created', u, resettable ? 'by reset link' : roleOf(u.role).label);
       return signedIn({ done: true }, [await sessionCookie(env, u)]);
     }
     case '/auth/password': {
@@ -302,12 +318,16 @@ export async function handleAdmin(req, env, path, sess, origin) {
     if (u && u.status === 'active') throw new HttpError(409, 'exists', `${u.name || email} already has an account.`);
     if (!u) { const id = randomId(12); const r = await st.insertUser({ id, email, name, role, status: 'invited', invited_by: sess.user.id }); if (!r.ok) throw new HttpError(409, 'exists', 'That email is already in use.'); u = await st.getUser({ id }); }
     else await st.patchUser(u.id, { name: name || u.name, role, status: 'invited', invited_by: sess.user.id });
-    await limit(env, 'mail:all', DAY, 95, 'The daily email limit has been reached. Try again tomorrow.');
-    const token = randomId(32);
+    const token = randomId(32), link = `${origin}/invite#${token}`;
     await st.putToken({ hash: await sha256(token), purpose: 'invite', user_id: u.id, email, data: { role, name: name || u.name, salt: randomId(16) }, expires: Date.now() + 7 * DAY });
-    await sendMail(env, email, inviteEmail({ name: name || u.name, inviter: sess.user.name, link: `${origin}/invite#${token}`, role }));
+    // Without the Gmail relay the founder shares the link themselves (WhatsApp, email).
+    let emailed = false;
+    if (mailOn(env)) {
+      await limit(env, 'mail:all', DAY, 95, 'The daily email limit has been reached. Try again tomorrow.');
+      await sendMail(env, email, inviteEmail({ name: name || u.name, inviter: sess.user.name, link, role })); emailed = true;
+    }
     await log(env, req, 'invited', sess.user, `${email} as ${ROLES[role].label}`);
-    return json({ ok: true });
+    return json({ ok: true, link, emailed, expiresDays: 7 });
   }
 
   const target = b.id && await st.getUser({ id: str(b.id, 40) });
@@ -330,6 +350,20 @@ export async function handleAdmin(req, env, path, sess, origin) {
     await log(env, req, 'access_changed', sess.user, `${target.email}: ${Object.entries(patch).map(([k, v]) => `${k} → ${v}`).join(', ')}`);
     return json({ ok: true, user: r.user && { id: r.user.id, role: r.user.role, status: r.user.status, name: r.user.name } });
   }
+  if (path === '/admin/reset-link') {
+    if (target.status !== 'active') throw new HttpError(400, 'bad_request', 'Only active accounts can get a password reset link.');
+    await limit(env, 'invite:' + sess.user.id, HOUR, 30);
+    const token = randomId(32), link = `${origin}/invite#${token}`;
+    await st.putToken({ hash: await sha256(token), purpose: 'invite', user_id: target.id, email: target.email,
+      data: { role: target.role, name: target.name, salt: randomId(16), reset: true, username: target.username }, expires: Date.now() + 3 * DAY });
+    let emailed = false;
+    if (mailOn(env)) {
+      await limit(env, 'mail:all', DAY, 95, 'The daily email limit has been reached. Try again tomorrow.');
+      await sendMail(env, target.email, resetLinkEmail({ name: target.name, inviter: sess.user.name, link })); emailed = true;
+    }
+    await log(env, req, 'reset_link', sess.user, target.email);
+    return json({ ok: true, link, emailed, expiresDays: 3 });
+  }
   if (path === '/admin/signout') {
     await st.patchUser(target.id, {}, true); forgetUser(target.id);
     await log(env, req, 'signed_out', sess.user, `${target.email} on all devices`);
@@ -349,7 +383,8 @@ async function systemStatus(env) {
   const add = (key, label, ok, note) => out.push({ key, label, ok, note });
   add('secret', 'Session secret', !!(env.SESSION_SECRET && env.SESSION_SECRET.length >= 24), env.SESSION_SECRET ? '' : 'Add SESSION_SECRET.');
   add('founders', 'Founder emails', founderEmails(env).length > 0, founderEmails(env).length ? `${founderEmails(env).length} listed` : 'Add FOUNDER_EMAILS.');
-  add('mail', 'Email codes', !!(env.MAIL_URL && env.MAIL_KEY), env.MAIL_URL ? 'Relay configured' : 'Add MAIL_URL and MAIL_KEY.');
+  add('mail', 'Email codes', true, mailOn(env) ? 'On: sign-in asks for an emailed code' : 'Off: sign-in is username and password only. Add MAIL_URL and MAIL_KEY to turn on emailed codes.');
+  if (!mailOn(env)) add('setup', 'Founder setup code', !!(env.SETUP_CODE && env.SETUP_CODE.length >= 12), env.SETUP_CODE ? 'Set' : 'Add SETUP_CODE so founders can set up or recover their account.');
   try {
     const { notionPing } = await import('./notion.js');
     const who = await notionPing(env); add('notion', 'Notion', true, who);

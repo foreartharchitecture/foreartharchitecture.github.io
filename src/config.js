@@ -76,10 +76,11 @@ export const ROLES = {
     label: 'Founder', groups: ['overview', 'studio', 'crm', 'sales', 'finance', 'hr'], home: 'overview',
     views: '*', write: true, search: true, ai: true, drive: 'all', admin: true
   },
+  // Staff: Projects and Tasks pages only, view-only, no Drive files.
   staff: {
-    label: 'Staff', groups: ['studio'], home: 'studio-ov',
-    views: ['projects', 'tasks', 'follow', 'done', 'visits', 'meetings', 'team', 'issues'],
-    write: false, search: false, ai: false, drive: 'studio', admin: false
+    label: 'Staff', groups: ['studio'], pages: ['projects', 'tasks'], home: 'projects',
+    views: ['projects', 'tasks', 'follow', 'done', 'team'],
+    write: false, search: false, ai: false, drive: 'none', admin: false
   }
 };
 export const roleOf = r => ROLES[r] || ROLES.staff;

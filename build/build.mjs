@@ -24,7 +24,7 @@ patch('access-levels',
   "if (!VIEW_NAME[S.ui.view]) S.ui.view = 'overview';",
   `if (!VIEW_NAME[S.ui.view]) S.ui.view = 'overview';
 const FEU = window.FE_USER || { groups: Object.keys(GROUPS), home: 'overview', perms: { write: true, search: true, views: '*' } };
-const viewOk = v => !!VIEW_NAME[v] && FEU.groups.includes(groupOf(v));
+const viewOk = v => !!VIEW_NAME[v] && FEU.groups.includes(groupOf(v)) && (!FEU.pages || FEU.pages.includes(v));
 const keyOk = k => FEU.perms.views === '*' || (FEU.perms.views || []).includes(k);
 const RO = !FEU.perms.write;
 { const q = new URLSearchParams(location.search).get('view'); if (q && viewOk(q)) S.ui.view = q; }
@@ -45,7 +45,27 @@ patch('hide-sections', '/* ================= Boot ================= */\nrenderAl
 Object.keys(GROUPS).forEach(g => { const t = $('#tab-' + g); if (t && !FEU.groups.includes(g)) t.hidden = true; });
 if (RO) document.body.classList.add('ro');
 if (!FEU.perms.search) { const b = document.querySelector('.pal-modes [data-v="search"]'); if (b) b.hidden = true; }
+if (FEU.perms.drive === 'none') { const d = $('#sync-d'); if (d) d.hidden = true; }
+if (RO) {
+  // View-only: show values as plain text instead of dropdowns and date pickers, and switch off card dragging.
+  const LOCK = 'select[data-chg="proj-status"],select[data-chg="proj-stage"],select[data-chg="proj-prio"],select[data-chg="task-status"],select[data-chg^="lead-"],#drawer input.inp[type="date"],#drawer input.inp[type="time"],[draggable="true"]';
+  const plain = el => { const s = document.createElement('span'); s.className = 'ro-val' + (el.classList.contains('tstat') ? ' tstat' : '');
+    s.textContent = el.tagName === 'SELECT' ? ((el.selectedOptions[0] || {}).textContent || 'Not set') : el.value ? (el.type === 'date' ? dm(el.value) : el.value) : 'Not set';
+    if (s.textContent === 'Not set') s.classList.add('none'); return s; };
+  const lock = () => document.querySelectorAll(LOCK).forEach(el => { if (el.getAttribute('draggable') === 'true') el.setAttribute('draggable', 'false'); else el.replaceWith(plain(el)); });
+  new MutationObserver(lock).observe(document.body, { childList: true, subtree: true });
+}
 renderAll();`);
+patch('tasks-hint-ro', "list.length + ' open · tick to mark done in Notion'", "list.length + (RO ? ' open · view only' : ' open · tick to mark done in Notion')");
+patch('projects-hint-ro', "${list.length} shown · drag a card to change its stage", "${list.length} shown${RO ? ' · view only' : ' · drag a card to change its stage'}");
+patch('drawer-events-allowed-open', '<div class="dr-sec"><div class="sub-h"><span class="lbl">Coming up</span>', "${keyOk('visits') || keyOk('meetings') ? `<div class=\"dr-sec\"><div class=\"sub-h\"><span class=\"lbl\">Coming up</span>");
+patch('drawer-events-allowed-close', "No past visits or meetings recorded.</div>'}</div></div>", "No past visits or meetings recorded.</div>'}</div></div>` : ''}");
+
+patch('subtabs-allowed', "GROUPS[g].map(x => `<button class=\"stab\" role=\"tab\"", "GROUPS[g].filter(viewOk).map(x => `<button class=\"stab\" role=\"tab\"");
+patch('drive-watch-allowed', "watchDrive('outbox', 'search_files',", "if (FEU.perms.drive !== 'none') watchDrive('outbox', 'search_files',");
+patch('drive-recent-allowed', "watchDrive('recent', 'list_recent_files',", "if (FEU.perms.drive !== 'none') watchDrive('recent', 'list_recent_files',");
+patch('drawer-drive-allowed', "if (S.noMcp) drive = `<div class=\"empty\">Connect Google Drive to see this project's folder.</div>`;",
+  "if (FEU.perms.drive === 'none') drive = `<div class=\"empty\">Project files are available to founders.</div>`;\n  else if (S.noMcp) drive = `<div class=\"empty\">Connect Google Drive to see this project's folder.</div>`;");
 
 // 2. Search across Notion & Drive is a founder feature.
 patch('search-guard', "q = String(q || '').trim(); if (q.length < 2) return;",
@@ -87,6 +107,8 @@ const head = `<!doctype html>
 <meta name="apple-mobile-web-app-title" content="Forearth">
 <style>[hidden]{display:none!important}html,body{margin:0}
 body.ro [data-act="new"],body.ro [data-act="convert"],body.ro [data-act="task-done"],body.ro [data-act="save-task-dates"],body.ro [data-act="save-ev-date"]{display:none!important}
+body.ro .trow .tick[data-act="task-done"]{display:block!important;visibility:hidden;pointer-events:none}
+.ro-val{display:inline-block;font-size:12.5px;line-height:30px}.ro-val.none{color:var(--ink-3)}.trow .ro-val{line-height:28px;font-size:12px;color:var(--ink-2)}
 @media (display-mode: standalone){.wrap{padding-top:max(18px,env(safe-area-inset-top))}}</style>
 `;
 if (!html.startsWith('<title>')) throw new Error('Dashboard source should start with <title>.');

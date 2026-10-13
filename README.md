@@ -2,10 +2,10 @@
 
 Founders' dashboard for Forearth Architecture as a standalone, installable web app.
 
-- **Sign-in:** username and password, then a 6-digit code sent by email. A device can be remembered for 30 days.
+- **Sign-in:** username and password. Once the Gmail sender is connected (`MAIL_URL` + `MAIL_KEY`), a 6-digit emailed code is also required, and a device can be remembered for 30 days. Without it, founders set up with `SETUP_CODE` and share invite or reset links themselves.
 - **Access levels:**
   - **Founder:** everything, including editing Notion.
-  - **Staff:** read-only Studio pages (projects, tasks, calendar, project files).
+  - **Staff:** view-only Projects and Tasks pages. No editing, ticking off, search, AI or Drive files. Contact details of team members are never sent to staff.
   - Permissions are checked on the server, not just hidden in the page.
 - **Data:** two-way sync with Notion, and read-only access to Google Drive (nothing is ever written to Drive).
 - **Runs on:** Cloudflare Workers, free plan, at `https://forearth-studio.<your-subdomain>.workers.dev`. Works in any desktop browser and installs as an app on Android (Chrome) and iPhone (Safari → Add to Home Screen).
@@ -17,7 +17,7 @@ Founders' dashboard for Forearth Architecture as a standalone, installable web a
 | Worker: routing, security headers, API | `src/index.js` |
 | Accounts, codes, sessions, access management | `src/auth.js`, `src/store.js` (SQLite Durable Object) |
 | Notion adapter (views → API queries, two-way writes) | `src/notion.js`, `src/config.js` |
-| Google Drive adapter (service account, read-only; staff limited to the Studio tree) | `src/drive.js` |
+| Google Drive adapter (service account, read-only; founders only) | `src/drive.js` |
 | Optional AI answers for founders (Anthropic API) | `src/ai.js` |
 | Email sending via the firm's Gmail (Apps Script relay) | `src/mail.js`, `apps-script/Code.gs` |
 | Sign-in pages | `public/login.html`, `public/login.js` |
@@ -34,7 +34,8 @@ Founders' dashboard for Forearth Architecture as a standalone, installable web a
 |---|---|
 | `SESSION_SECRET` | Long random value (use `/keygen` on the site). Changing it signs everyone out. |
 | `FOUNDER_EMAILS` | Comma-separated founder emails allowed to self-register at `/setup`. |
-| `MAIL_URL` | Apps Script web-app URL (see `apps-script/Code.gs`). |
+| `SETUP_CODE` | Needed while email codes are off: founders type it at `/setup` to create or recover their account. |
+| `MAIL_URL` | Optional. Apps Script web-app URL (see `apps-script/Code.gs`). Adding it with `MAIL_KEY` turns on emailed codes. |
 | `MAIL_KEY` | Shared key; same value as `MAIL_KEY` in the Apps Script. |
 | `NOTION_TOKEN` | Internal integration secret. Share each database with the integration. |
 | `GOOGLE_SA_KEY` | Full JSON key of a Google service account with Viewer access to the Studio, Finance, Sales and Human Resources folders. |
@@ -55,6 +56,7 @@ node dev/mock.mjs &                 # stand-ins for Notion, Drive, mail and AI o
 cp dev/dev.vars.example .dev.vars   # then add a test RSA key to GOOGLE_SA_KEY
 npx wrangler dev --port 8787
 node dev/api.test.mjs               # API, auth and permission tests (fresh local state)
+# password-only mode: run wrangler dev with an env file without MAIL_* and with SETUP_CODE=dev-setup-code-123456, then node dev/api.nomail.test.mjs
 node dev/seed.mjs && python3 dev/ui_test.py   # browser tests (Playwright)
 ```
 

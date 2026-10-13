@@ -96,8 +96,10 @@ export async function insideStudio(env, id) {
   }
   return false;
 }
+const noDrive = perms => { if (perms.drive === 'none') throw new HttpError(403, 'forbidden', 'Project files are available to founders.'); };
 async function guard(env, perms, id) {
   if (perms.drive === 'all') return;
+  noDrive(perms);
   if (!await insideStudio(env, id)) throw new HttpError(403, 'forbidden', 'Your access level only includes project folders.');
 }
 
@@ -106,6 +108,7 @@ async function guard(env, perms, id) {
 // The Drive query is rebuilt here rather than passed through, so nothing else can be OR-ed in.
 const STAFF_QUERY = /^\s*parentId\s*=\s*'([\w-]{10,120})'\s*(?:and\s+mimeType\s*(=|!=)\s*'([\w.+\/-]{3,120})'\s*)?$/;
 export async function searchFiles(env, input, perms) {
+  noDrive(perms);
   const q = String((input && input.query) || '').slice(0, 1000);
   let driveQ;
   if (perms.drive !== 'all') {
@@ -124,6 +127,7 @@ export async function searchFiles(env, input, perms) {
 }
 
 export async function recentFiles(env, input, perms) {
+  noDrive(perms);
   const scope = perms.drive === 'all' ? '' : ` and '${DRIVE.outbox}' in parents`;
   const r = await call(env, '/files', {
     q: `mimeType != '${FOLDER}' and trashed = false${scope}`, fields: `files(${FIELDS})`, orderBy: 'modifiedTime desc',

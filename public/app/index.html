@@ -15,6 +15,8 @@
 <meta name="apple-mobile-web-app-title" content="Forearth">
 <style>[hidden]{display:none!important}html,body{margin:0}
 body.ro [data-act="new"],body.ro [data-act="convert"],body.ro [data-act="task-done"],body.ro [data-act="save-task-dates"],body.ro [data-act="save-ev-date"]{display:none!important}
+body.ro .trow .tick[data-act="task-done"]{display:block!important;visibility:hidden;pointer-events:none}
+.ro-val{display:inline-block;font-size:12.5px;line-height:30px}.ro-val.none{color:var(--ink-3)}.trow .ro-val{line-height:28px;font-size:12px;color:var(--ink-2)}
 @media (display-mode: standalone){.wrap{padding-top:max(18px,env(safe-area-inset-top))}}</style>
 <title>Forearth Studio Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -675,7 +677,7 @@ try { const saved = JSON.parse(localStorage.getItem('fe-dash-ui') || '{}'); PERS
 if (!['quick', 'default', 'complex'].includes(S.ui.aiTier)) S.ui.aiTier = 'default';
 if (!VIEW_NAME[S.ui.view]) S.ui.view = 'overview';
 const FEU = window.FE_USER || { groups: Object.keys(GROUPS), home: 'overview', perms: { write: true, search: true, views: '*' } };
-const viewOk = v => !!VIEW_NAME[v] && FEU.groups.includes(groupOf(v));
+const viewOk = v => !!VIEW_NAME[v] && FEU.groups.includes(groupOf(v)) && (!FEU.pages || FEU.pages.includes(v));
 const keyOk = k => FEU.perms.views === '*' || (FEU.perms.views || []).includes(k);
 const RO = !FEU.perms.write;
 { const q = new URLSearchParams(location.search).get('view'); if (q && viewOk(q)) S.ui.view = q; }
@@ -1112,7 +1114,7 @@ function renderHeader(D) {
   };
   const sub = $('#subtabs');
   sub.innerHTML = g === 'overview' ? `<span class="grp-l">Forearth</span><span class="hint">The whole firm at a glance · drag calendar items to reschedule</span>`
-    : `<span class="grp-l">${GROUP_NAME[g]}</span>` + GROUPS[g].map(x => `<button class="stab" role="tab" data-act="goto" data-view="${x}" aria-selected="${v === x}">${VIEW_NAME[x]} <span class="n${x === 'tasks' && overdue ? ' alert' : ''}">${counts[x] ?? ''}</span></button>`).join('');
+    : `<span class="grp-l">${GROUP_NAME[g]}</span>` + GROUPS[g].filter(viewOk).map(x => `<button class="stab" role="tab" data-act="goto" data-view="${x}" aria-selected="${v === x}">${VIEW_NAME[x]} <span class="n${x === 'tasks' && overdue ? ' alert' : ''}">${counts[x] ?? ''}</span></button>`).join('');
   const b = $('#banner');
   if (S.noMcp) { b.hidden = false; b.innerHTML = `<div class="banner"><p>Live data isn't available in this view. Open the dashboard in claude.ai with the Notion and Google Drive connectors added; everything on this page reads from and writes to them.</p></div>`; }
   else if (S.conn.notion === 'off') { b.hidden = false; b.innerHTML = `<div class="banner"><p>${esc(errCopy(CFG.N, S.connErr.notion))}</p><button class="btn" data-act="refresh">Sync</button></div>`; }
@@ -1330,7 +1332,7 @@ function renderProjects(D) {
       <div class="seg" role="group" aria-label="Project status">${segs.map(([k, l]) => `<button data-act="proj-filter" data-v="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</div>
       <select class="sel" id="f-projtype" data-chg="proj-type" aria-label="Project type"><option value="all">All types</option>${types.map(t => `<option${t === ty ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>
       <div class="grow"><input class="inp" id="f-projq" data-inp="projq" placeholder="Filter by name, FE-100 code or client" value="${esc(S.ui.projQ)}" aria-label="Filter projects"></div>
-      <span class="hint">${ready(['projects']) ? `${list.length} shown · drag a card to change its stage` : ''}</span>
+      <span class="hint">${ready(['projects']) ? `${list.length} shown${RO ? ' · view only' : ' · drag a card to change its stage'}` : ''}</span>
       <button class="btn primary" data-act="new" data-type="project">+ New project</button>
     </div>${board}</div>`;
 }
@@ -1368,7 +1370,7 @@ function renderTasks(D) {
       <span style="flex:1"></span><button class="btn primary" data-act="new" data-type="task">+ New task</button>
     </div>
     <div class="tasks-grid">
-      <section class="panel" aria-label="Open tasks"><div class="ph"><h2>Open tasks</h2><span class="meta">${ready(['tasks']) ? list.length + ' open · tick to mark done in Notion' : ''}</span></div>${body}</section>
+      <section class="panel" aria-label="Open tasks"><div class="ph"><h2>Open tasks</h2><span class="meta">${ready(['tasks']) ? list.length + (RO ? ' open · view only' : ' open · tick to mark done in Notion') : ''}</span></div>${body}</section>
       <div class="rail">
         <section class="panel"><div class="ph"><h2>Awaiting client</h2><span class="meta">${ready(['follow']) ? aw.length : ''}</span></div><div class="list">${ready(['follow']) ? (aw.map(fRow).join('') || '<div class="empty">No issued work is waiting on a client.</div>') : sectionState(['follow'])}</div></section>
         <section class="panel"><div class="ph"><h2>Recently delivered</h2></div><div class="list">${ready(['done']) ? (D.done.slice(0, 12).map(dRow).join('') || '<div class="empty">Nothing marked done yet.</div>') : sectionState(['done'])}</div></section>
@@ -1567,7 +1569,8 @@ function drawerProject(D, d) {
   const folder = (S.drive.folders || []).find(f => f.num === p.num);
   const lead = D.leadsAll.find(l => convertedCode(l) === p.id);
   let drive;
-  if (S.noMcp) drive = `<div class="empty">Connect Google Drive to see this project's folder.</div>`;
+  if (FEU.perms.drive === 'none') drive = `<div class="empty">Project files are available to founders.</div>`;
+  else if (S.noMcp) drive = `<div class="empty">Connect Google Drive to see this project's folder.</div>`;
   else if (!S.drive.folders) { loadFolders(); drive = S.drive.foldersErr ? `<div class="err">${esc(errCopy(CFG.G, S.drive.foldersErr))}</div>` : skel(2); }
   else if (!folder) drive = `<div class="empty">No Drive folder named ${esc(p.id)} under Studio › Ongoing or Completed Projects. Suggested name: <span class="sel-copy">${esc(p.id + ' ' + p.name)}</span> <button class="btn ghost" data-act="copy" data-v="${esc(p.id + ' ' + p.name)}">Copy</button></div>`;
   else {
@@ -1595,8 +1598,8 @@ function drawerProject(D, d) {
     </dl>
     <div class="dr-actions"><button class="btn" data-act="new" data-type="task" data-project="${p.k}">+ Task</button><button class="btn" data-act="new" data-type="visit" data-project="${p.k}">+ Site visit</button><button class="btn" data-act="new" data-type="meeting" data-project="${p.k}">+ Meeting</button>${notionLink(p.url)}</div>
     <div class="dr-sec"><div class="sub-h"><span class="lbl">Open tasks</span><span class="cnt">${tasks.length}</span></div><div class="list">${tasks.map(t => taskRowCompact(D, t)).join('') || '<div class="empty" style="padding-top:2px">No open tasks.</div>'}</div></div>
-    <div class="dr-sec"><div class="sub-h"><span class="lbl">Coming up</span><span class="cnt">${upcoming.length}</span></div><div class="list">${upcoming.map(e => evRow(D, e)).join('') || '<div class="empty" style="padding-top:2px">No visit or meeting scheduled.</div>'}</div></div>
-    <div class="dr-sec"><div class="sub-h"><span class="lbl">Visits & meetings log</span><span class="cnt">${past.length}</span></div><div class="list">${past.slice(0, 10).map(e => evRow(D, e)).join('') || '<div class="empty" style="padding-top:2px">No past visits or meetings recorded.</div>'}</div></div>
+    ${keyOk('visits') || keyOk('meetings') ? `<div class="dr-sec"><div class="sub-h"><span class="lbl">Coming up</span><span class="cnt">${upcoming.length}</span></div><div class="list">${upcoming.map(e => evRow(D, e)).join('') || '<div class="empty" style="padding-top:2px">No visit or meeting scheduled.</div>'}</div></div>
+    <div class="dr-sec"><div class="sub-h"><span class="lbl">Visits & meetings log</span><span class="cnt">${past.length}</span></div><div class="list">${past.slice(0, 10).map(e => evRow(D, e)).join('') || '<div class="empty" style="padding-top:2px">No past visits or meetings recorded.</div>'}</div></div>` : ''}
     <div class="dr-sec"><div class="sub-h"><span class="lbl">Drive folder</span>${folder && safeUrl(folder.url) ? `<a class="btn ghost" href="${esc(safeUrl(folder.url))}" target="_blank" rel="noopener">Open ↗</a>` : ''}</div>${drive}</div>`;
   return drawerFrame('Project', body);
 }
@@ -2764,6 +2767,16 @@ setInterval(() => { if (document.visibilityState === 'visible' && !S.drawer) sch
 Object.keys(GROUPS).forEach(g => { const t = $('#tab-' + g); if (t && !FEU.groups.includes(g)) t.hidden = true; });
 if (RO) document.body.classList.add('ro');
 if (!FEU.perms.search) { const b = document.querySelector('.pal-modes [data-v="search"]'); if (b) b.hidden = true; }
+if (FEU.perms.drive === 'none') { const d = $('#sync-d'); if (d) d.hidden = true; }
+if (RO) {
+  // View-only: show values as plain text instead of dropdowns and date pickers, and switch off card dragging.
+  const LOCK = 'select[data-chg="proj-status"],select[data-chg="proj-stage"],select[data-chg="proj-prio"],select[data-chg="task-status"],select[data-chg^="lead-"],#drawer input.inp[type="date"],#drawer input.inp[type="time"],[draggable="true"]';
+  const plain = el => { const s = document.createElement('span'); s.className = 'ro-val' + (el.classList.contains('tstat') ? ' tstat' : '');
+    s.textContent = el.tagName === 'SELECT' ? ((el.selectedOptions[0] || {}).textContent || 'Not set') : el.value ? (el.type === 'date' ? dm(el.value) : el.value) : 'Not set';
+    if (s.textContent === 'Not set') s.classList.add('none'); return s; };
+  const lock = () => document.querySelectorAll(LOCK).forEach(el => { if (el.getAttribute('draggable') === 'true') el.setAttribute('draggable', 'false'); else el.replaceWith(plain(el)); });
+  new MutationObserver(lock).observe(document.body, { childList: true, subtree: true });
+}
 renderAll();
 (async () => {
   const use = name => (window.claude && typeof window.claude.use === 'function' ? window.claude.use(name) : Promise.resolve(null)).catch(() => null);
@@ -2772,12 +2785,12 @@ renderAll();
   if (!mcp) { S.noMcp = true; S.conn.notion = 'off'; S.conn.drive = 'off'; schedule(); return; }
   S.mcp = mcp;
   NOTION_KEYS.filter(keyOk).forEach(watchNotion);
-  watchDrive('outbox', 'search_files', { query: `parentId = '${CFG.drive.outbox}'`, pageSize: 30, excludeContentSnippets: true });
-  watchDrive('recent', 'list_recent_files', { orderBy: 'lastModified', pageSize: 15, excludeContentSnippets: true });
+  if (FEU.perms.drive !== 'none') watchDrive('outbox', 'search_files', { query: `parentId = '${CFG.drive.outbox}'`, pageSize: 30, excludeContentSnippets: true });
+  if (FEU.perms.drive !== 'none') watchDrive('recent', 'list_recent_files', { orderBy: 'lastModified', pageSize: 15, excludeContentSnippets: true });
   schedule();
 })();
 })();
 </script>
-<script src="/app/account.js?v=b54b2cf924" defer></script>
+<script src="/app/account.js?v=9a7db8d5da" defer></script>
 </body>
 </html>

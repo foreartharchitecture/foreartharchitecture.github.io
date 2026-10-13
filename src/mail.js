@@ -36,6 +36,16 @@ export function inviteEmail({ name, inviter, link, role }) {
   return { subject, html, text };
 }
 
+export function resetLinkEmail({ name, inviter, link }) {
+  const subject = 'Reset your Forearth Studio password';
+  const html = frame(name ? `Hello ${name}` : 'Reset your password',
+    `<p style="margin:0 0 16px;font-size:14px;line-height:1.5">${esc(inviter || 'A founder')} has sent you a link to choose a new password for the Forearth Studio dashboard. The link works once and expires in 3 days.</p>
+     <a href="${esc(link)}" style="display:inline-block;background:#181915;color:#fbfaf5;text-decoration:none;padding:11px 18px;border-radius:4px;font-size:14px;font-weight:600">Choose a new password</a>
+     <p style="margin:16px 0 0;font-size:12px;color:#787a71;word-break:break-all">${esc(link)}</p>`,
+    'If you did not ask for this, ignore this email; your password stays the same.');
+  return { subject, html, text: `Choose a new Forearth Studio password (link works once, expires in 3 days):\n${link}` };
+}
+
 export async function sendMail(env, to, msg) {
   if (!env.MAIL_URL || !env.MAIL_KEY) throw new HttpError(503, 'mail_not_configured', 'Email sending is not set up yet. A founder needs to add MAIL_URL and MAIL_KEY.');
   let res, out;
